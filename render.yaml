@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: tennis-contact-finder
+    runtime: docker
+    plan: starter
+    healthCheckPath: /
+    envVars:
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-5
+      - key: PORT
+        value: 10000
