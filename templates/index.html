@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tennis Serve Contact Finder</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=IBM+Plex+Mono:wght@400;500;600&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0c0f0a;
+    --surface: #161a12;
+    --surface-2: #1e2318;
+    --border: #2a3020;
+    --border-light: #3a4530;
+    --text: #e8ead4;
+    --text-dim: #9aa085;
+    --accent: #c8e64a;
+    --accent-dim: #8ba332;
+    --red: #e6574a;
+    --amber: #e6c44a;
+    --green: #4ae664;
+    --radius: 10px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  .grain {
+    position: fixed; inset: 0; z-index: 9999; pointer-events: none; opacity: 0.035;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-repeat: repeat; background-size: 256px;
+  }
+
+  .container {
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 60px 24px 80px;
+  }
+
+  header {
+    margin-bottom: 48px;
+  }
+
+  .logo-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 12px;
+  }
+
+  .ball-icon {
+    width: 38px; height: 38px;
+    border-radius: 50%;
+    background: var(--accent);
+    position: relative;
+    flex-shrink: 0;
+  }
+  .ball-icon::after {
+    content: '';
+    position: absolute;
+    inset: 6px;
+    border: 2px solid var(--bg);
+    border-radius: 50%;
+    clip-path: polygon(0 40%, 100% 40%, 100% 60%, 0 60%);
+  }
+
+  h1 {
+    font-family: 'DM Serif Display', serif;
+    font-size: 2rem;
+    font-weight: 400;
+    letter-spacing: -0.02em;
+    color: var(--text);
+  }
+
+  .subtitle {
+    color: var(--text-dim);
+    font-size: 0.95rem;
+    line-height: 1.6;
+    max-width: 560px;
+  }
+
+  /* Upload area */
+  .upload-zone {
+    border: 2px dashed var(--border-light);
+    border-radius: var(--radius);
+    padding: 48px 32px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    position: relative;
+    background: var(--surface);
+  }
+  .upload-zone:hover, .upload-zone.drag-over {
+    border-color: var(--accent);
+    background: var(--surface-2);
+  }
+  .upload-zone input {
+    position: absolute; inset: 0; opacity: 0; cursor: pointer;
+  }
+  .upload-icon {
+    font-size: 2.4rem;
+    margin-bottom: 12px;
+    opacity: 0.7;
+  }
+  .upload-label {
+    font-weight: 600;
+    font-size: 1.05rem;
+    margin-bottom: 6px;
+  }
+  .upload-hint {
+    color: var(--text-dim);
+    font-size: 0.82rem;
+  }
+  .file-name {
+    display: none;
+    margin-top: 14px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.85rem;
+    color: var(--accent);
+    word-break: break-all;
+  }
+  .file-name.show { display: block; }
+
+  .analyze-btn {
+    display: none;
+    margin-top: 28px;
+    width: 100%;
+    padding: 16px;
+    border: none;
+    border-radius: var(--radius);
+    background: var(--accent);
+    color: var(--bg);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.95rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    transition: opacity 0.2s, transform 0.1s;
+  }
+  .analyze-btn.show { display: block; }
+  .analyze-btn:hover { opacity: 0.9; }
+  .analyze-btn:active { transform: scale(0.99); }
+  .analyze-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  /* Progress */
+  .progress-area {
+    display: none;
+    margin-top: 32px;
+  }
+  .progress-area.show { display: block; }
+
+  .progress-bar-track {
+    height: 4px;
+    background: var(--surface-2);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-bottom: 14px;
+  }
+  .progress-bar-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 2px;
+    width: 0%;
+    animation: indeterminate 2s ease-in-out infinite;
+  }
+  @keyframes indeterminate {
+    0%   { width: 0%; margin-left: 0; }
+    50%  { width: 60%; margin-left: 20%; }
+    100% { width: 0%; margin-left: 100%; }
+  }
+
+  .progress-text {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.82rem;
+    color: var(--text-dim);
+  }
+
+  /* Results */
+  .results {
+    display: none;
+    margin-top: 40px;
+  }
+  .results.show { display: block; }
+
+  .result-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 8px;
+  }
+
+  .status-badge {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 5px 12px;
+    border-radius: 6px;
+  }
+  .status-badge.found { background: rgba(74,230,100,0.15); color: var(--green); }
+  .status-badge.indeterminate { background: rgba(230,196,74,0.15); color: var(--amber); }
+
+  .confidence-badge {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.72rem;
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+    padding: 4px 10px;
+    border-radius: 6px;
+  }
+
+  .result-reason {
+    color: var(--text-dim);
+    font-size: 0.92rem;
+    line-height: 1.6;
+    margin-bottom: 28px;
+    max-width: 640px;
+  }
+
+  .meta-row {
+    display: flex;
+    gap: 24px;
+    margin-bottom: 32px;
+    flex-wrap: wrap;
+  }
+  .meta-item {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.78rem;
+    color: var(--text-dim);
+  }
+  .meta-item span {
+    color: var(--text);
+    font-weight: 500;
+  }
+
+  .section-title {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent-dim);
+    margin-bottom: 14px;
+  }
+
+  .image-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    margin-bottom: 24px;
+  }
+  .image-card img {
+    width: 100%;
+    display: block;
+    image-rendering: auto;
+  }
+
+  .frame-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 2px;
+    margin-bottom: 24px;
+    border-radius: var(--radius);
+    overflow: hidden;
+    border: 1px solid var(--border);
+  }
+  .frame-cell {
+    position: relative;
+    background: var(--surface);
+  }
+  .frame-cell img { width: 100%; display: block; }
+  .frame-label {
+    position: absolute;
+    bottom: 0; left: 0;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding: 5px 10px;
+    background: rgba(12,15,10,0.82);
+    backdrop-filter: blur(4px);
+  }
+  .frame-label.before { color: var(--text-dim); }
+  .frame-label.contact { color: var(--accent); }
+  .frame-label.after { color: var(--text-dim); }
+
+  .error-box {
+    display: none;
+    background: rgba(230,87,74,0.1);
+    border: 1px solid rgba(230,87,74,0.3);
+    border-radius: var(--radius);
+    padding: 18px 22px;
+    margin-top: 24px;
+    font-size: 0.9rem;
+    color: var(--red);
+  }
+  .error-box.show { display: block; }
+
+  .new-btn {
+    display: inline-block;
+    margin-top: 32px;
+    padding: 12px 28px;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--text);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: border-color 0.2s;
+  }
+  .new-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  @media (max-width: 600px) {
+    .container { padding: 36px 16px 60px; }
+    h1 { font-size: 1.6rem; }
+    .upload-zone { padding: 36px 20px; }
+    .frame-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="grain"></div>
+
+<div class="container">
+  <header>
+    <div class="logo-row">
+      <div class="ball-icon"></div>
+      <h1>Serve Contact Finder</h1>
+    </div>
+    <p class="subtitle">Upload a tennis serve video to identify the exact frame where the ball first touches the racket above the player's head.</p>
+  </header>
+
+  <div class="upload-zone" id="uploadZone">
+    <input type="file" id="videoInput" accept=".mp4,.mov,.m4v,.avi,.mpg,.mpeg">
+    <div class="upload-icon">&#9881;</div>
+    <div class="upload-label">Drop video here or click to browse</div>
+    <div class="upload-hint">mp4, mov, m4v, avi, mpg, mpeg &mdash; up to 512 MB</div>
+    <div class="file-name" id="fileName"></div>
+  </div>
+
+  <button class="analyze-btn" id="analyzeBtn" onclick="doAnalyze()">ANALYZE SERVE</button>
+
+  <div class="progress-area" id="progress">
+    <div class="progress-bar-track"><div class="progress-bar-fill"></div></div>
+    <div class="progress-text" id="progressText">Uploading and extracting frames &hellip; this may take a minute.</div>
+  </div>
+
+  <div class="error-box" id="errorBox"></div>
+
+  <div class="results" id="results">
+    <div class="result-header">
+      <div class="status-badge" id="statusBadge"></div>
+      <div class="confidence-badge" id="confBadge"></div>
+    </div>
+    <p class="result-reason" id="reason"></p>
+
+    <div class="meta-row" id="metaRow"></div>
+
+    <div id="foundResults">
+      <div class="section-title">Before &middot; Contact &middot; After</div>
+      <div class="frame-grid" id="frameGrid"></div>
+
+      <div class="section-title">Zoomed Triplet</div>
+      <div class="image-card" id="tripletZoomCard"></div>
+
+      <div class="section-title">Contact Frame</div>
+      <div class="image-card" id="contactCard"></div>
+    </div>
+
+    <div class="section-title">Contact Sheet</div>
+    <div class="image-card" id="contactSheetCard"></div>
+
+    <button class="new-btn" onclick="reset()">Analyze another video</button>
+  </div>
+</div>
+
+<script>
+const zone = document.getElementById('uploadZone');
+const input = document.getElementById('videoInput');
+const nameEl = document.getElementById('fileName');
+const btn = document.getElementById('analyzeBtn');
+
+input.addEventListener('change', () => {
+  if (input.files.length) {
+    nameEl.textContent = input.files[0].name;
+    nameEl.classList.add('show');
+    btn.classList.add('show');
+  }
+});
+
+zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+zone.addEventListener('drop', e => {
+  e.preventDefault();
+  zone.classList.remove('drag-over');
+  if (e.dataTransfer.files.length) {
+    input.files = e.dataTransfer.files;
+    input.dispatchEvent(new Event('change'));
+  }
+});
+
+async function doAnalyze() {
+  const file = input.files[0];
+  if (!file) return;
+
+  btn.disabled = true;
+  btn.textContent = 'ANALYZING…';
+  document.getElementById('progress').classList.add('show');
+  document.getElementById('errorBox').classList.remove('show');
+  document.getElementById('results').classList.remove('show');
+
+  const form = new FormData();
+  form.append('video', file);
+
+  try {
+    const resp = await fetch('/analyze', { method: 'POST', body: form });
+    const data = await resp.json();
+
+    document.getElementById('progress').classList.remove('show');
+
+    if (resp.ok && !data.error) {
+      showResults(data);
+    } else {
+      showError(data.error || 'Unknown error');
+    }
+  } catch (err) {
+    document.getElementById('progress').classList.remove('show');
+    showError(err.message);
+  }
+
+  btn.disabled = false;
+  btn.textContent = 'ANALYZE SERVE';
+}
+
+function showError(msg) {
+  const el = document.getElementById('errorBox');
+  el.textContent = msg;
+  el.classList.add('show');
+}
+
+function showResults(d) {
+  const res = document.getElementById('results');
+  const badge = document.getElementById('statusBadge');
+  const conf = document.getElementById('confBadge');
+  const found = document.getElementById('foundResults');
+
+  badge.textContent = d.status;
+  badge.className = 'status-badge ' + d.status;
+
+  if (d.confidence) {
+    conf.textContent = d.confidence + ' confidence';
+    conf.style.display = '';
+  } else {
+    conf.style.display = 'none';
+  }
+
+  document.getElementById('reason').textContent = d.reason || '';
+
+  const meta = document.getElementById('metaRow');
+  meta.innerHTML = '';
+  if (d.fps) meta.innerHTML += `<div class="meta-item">FPS <span>${Math.round(d.fps)}</span></div>`;
+  if (d.frame_count) meta.innerHTML += `<div class="meta-item">Frames <span>${d.frame_count}</span></div>`;
+  if (d.contact_frame != null) meta.innerHTML += `<div class="meta-item">Contact <span>#${d.contact_frame}</span></div>`;
+
+  if (d.status === 'found') {
+    found.style.display = '';
+
+    const grid = document.getElementById('frameGrid');
+    grid.innerHTML = `
+      <div class="frame-cell"><img src="${d.triplet_url}" alt=""><span class="frame-label before">Before #${d.before_frame}</span></div>
+      <div class="frame-cell"><img src="${d.contact_url}" alt=""><span class="frame-label contact">Contact #${d.contact_frame}</span></div>
+      <div class="frame-cell"><img src="${d.triplet_url}" alt=""><span class="frame-label after">After #${d.after_frame}</span></div>
+    `;
+
+    document.getElementById('tripletZoomCard').innerHTML = `<img src="${d.triplet_zoom_url}" alt="Zoomed triplet">`;
+    document.getElementById('contactCard').innerHTML = `<img src="${d.contact_zoom_url}" alt="Contact frame zoomed">`;
+  } else {
+    found.style.display = 'none';
+  }
+
+  if (d.contact_sheet_url) {
+    document.getElementById('contactSheetCard').innerHTML = `<img src="${d.contact_sheet_url}" alt="Contact sheet">`;
+  }
+
+  res.classList.add('show');
+}
+
+function reset() {
+  input.value = '';
+  nameEl.classList.remove('show');
+  btn.classList.remove('show');
+  document.getElementById('results').classList.remove('show');
+  document.getElementById('errorBox').classList.remove('show');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+</script>
+</body>
+</html>
