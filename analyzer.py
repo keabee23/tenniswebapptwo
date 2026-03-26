@@ -8,8 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+import anthropic
 import cv2
-from openai import OpenAI
 from PIL import Image, ImageDraw
 
 ALLOWED_EXTENSIONS = {"mp4", "mov", "m4v", "avi", "mpeg", "mpg"}
@@ -29,7 +29,7 @@ Rules:
 - If the evidence is insufficient, return indeterminate instead of guessing.
 - Contact must be above the head.
 
-Return strict JSON with this schema:
+Return strict JSON with this schema (no markdown fencing, no extra text, only the JSON object):
 {
   "status": "found" | "indeterminate",
   "before_frame": <int|null>,
@@ -51,12 +51,12 @@ class AnalysisArtifacts:
 
 
 class ContactAnalyzer:
-    def __init__(self, runs_root: str, model: str = "gpt-5"):
+    def __init__(self, runs_root: str, model: str = "claude-sonnet-4-20250514"):
         self.runs_root = Path(runs_root)
         self.runs_root.mkdir(parents=True, exist_ok=True)
         self.model = model
-        api_key = os.getenv("OPENAI_API_KEY")
-        self.client = OpenAI(api_key=api_key) if api_key else None
+        api_key = os.getenv("ANTHROPIC_API_KEY")
+        self.client = anthropic.Anthropic(api_key=api_key) if api_key else None
 
     @staticmethod
     def allowed_file(filename: str) -> bool:
@@ -207,55 +207,59 @@ class ContactAnalyzer:
             groups.append([idx - 1, idx, idx + 1])
         return groups
 
-    def encode_image(self, path: Path) -> str:
+    def encode_image(self, path: Path) -> Tuple[str, str]:
         ext = path.suffix.lower().lstrip(".")
         mime = "jpeg" if ext == "jpg" else ext
+        media_type = f"image/{mime}"
         with open(path, "rb") as f:
-            return f"data:image/{mime};base64," + base64.b64encode(f.read()).decode("utf-8")
+            data = base64.b64encode(f.read()).decode("utf-8")
+        return data, media_type
 
     def ask_model_for_window(self, groups: List[List[int]], artifacts: AnalysisArtifacts, scope: str) -> Dict[str, Any]:
         if not self.client:
             return {}
 
-        input_content: List[Dict[str, Any]] = [
-            {"type": "input_text", "text": STRICT_PROMPT},
-            {"type": "input_text", "text": "First, choose the most likely frame window containing the above-head serve contact. Return JSON: {\"window_start\": int, \"window_end\": int, \"reason\": string}."},
+        content: List[Dict[str, Any]] = [
+            {"type": "text", "text": STRICT_PROMPT},
+            {"type": "text", "text": "First, choose the most likely frame window containing the above-head serve contact. Return JSON: {\"window_start\": int, \"window_end\": int, \"reason\": string}."},
         ]
         for i, group in enumerate(groups):
             strip_path = artifacts.output_dir / f"window_{i:02d}.png"
             self.build_triplet_or_group_strip(group, strip_path, artifacts, zoom=True)
             label = f"Window {i}: frames {group[0]}-{group[-1]}"
-            input_content.append({"type": "input_text", "text": label})
-            input_content.append({"type": "input_image", "image_url": self.encode_image(strip_path), "detail": "high"})
+            content.append({"type": "text", "text": label})
+            data, media_type = self.encode_image(strip_path)
+            content.append({"type": "image", "source": {"type": "base64", "media_type": media_type, "data": data}})
 
-        response = self.client.responses.create(
+        response = self.client.messages.create(
             model=self.model,
-            input=[{"role": "user", "content": input_content}],
-            text={"format": {"type": "json_object"}},
+            max_tokens=1024,
+            messages=[{"role": "user", "content": content}],
         )
-        return self.safe_json(response.output_text)
+        return self.safe_json(response.content[0].text)
 
     def ask_model_for_triplet(self, groups: List[List[int]], artifacts: AnalysisArtifacts) -> Dict[str, Any]:
         if not self.client:
-            return {"status": "indeterminate", "reason": "OPENAI_API_KEY is not set.", "confidence": "low"}
+            return {"status": "indeterminate", "reason": "ANTHROPIC_API_KEY is not set.", "confidence": "low"}
 
         content: List[Dict[str, Any]] = [
-            {"type": "input_text", "text": STRICT_PROMPT},
-            {"type": "input_text", "text": "Review each 3-frame triplet. Each triplet is [before, candidate, after]. Choose only one triplet if it satisfies the rules. Otherwise return indeterminate."},
+            {"type": "text", "text": STRICT_PROMPT},
+            {"type": "text", "text": "Review each 3-frame triplet. Each triplet is [before, candidate, after]. Choose only one triplet if it satisfies the rules. Otherwise return indeterminate."},
         ]
         for group in groups:
             idx = group[1]
             strip_path = artifacts.output_dir / f"triplet_candidate_{idx:05d}.png"
             self.build_triplet_strip(group, strip_path, artifacts, zoom=True)
-            content.append({"type": "input_text", "text": f"Triplet centered on frame {idx}: before={group[0]}, contact?={group[1]}, after={group[2]}"})
-            content.append({"type": "input_image", "image_url": self.encode_image(strip_path), "detail": "high"})
+            content.append({"type": "text", "text": f"Triplet centered on frame {idx}: before={group[0]}, contact?={group[1]}, after={group[2]}"})
+            data, media_type = self.encode_image(strip_path)
+            content.append({"type": "image", "source": {"type": "base64", "media_type": media_type, "data": data}})
 
-        response = self.client.responses.create(
+        response = self.client.messages.create(
             model=self.model,
-            input=[{"role": "user", "content": content}],
-            text={"format": {"type": "json_object"}},
+            max_tokens=1024,
+            messages=[{"role": "user", "content": content}],
         )
-        return self.safe_json(response.output_text)
+        return self.safe_json(response.content[0].text)
 
     def heuristic_pick_triplet(self, window: Tuple[int, int], artifacts: AnalysisArtifacts, meta: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         start, end = window
@@ -320,6 +324,11 @@ class ContactAnalyzer:
     @staticmethod
     def safe_json(text: str) -> Dict[str, Any]:
         try:
-            return json.loads(text)
+            text = text.strip()
+            if text.startswith("```"):
+                text = text.split("\n", 1)[1] if "\n" in text else text[3:]
+                if text.endswith("```"):
+                    text = text[:-3]
+            return json.loads(text.strip())
         except Exception:
             return {}

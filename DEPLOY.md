@@ -8,8 +8,8 @@
    - Runtime: Docker
    - Health check path: `/`
 4. Add environment variables:
-   - `OPENAI_API_KEY`
-   - `OPENAI_MODEL=gpt-5`
+   - `ANTHROPIC_API_KEY`
+   - `ANTHROPIC_MODEL=claude-sonnet-4-20250514`
 5. Deploy.
 
 ## Railway
@@ -17,8 +17,8 @@
 1. Push this folder to a GitHub repo.
 2. In Railway, create a new project and deploy from that repo, or use the included Dockerfile.
 3. Add environment variables:
-   - `OPENAI_API_KEY`
-   - `OPENAI_MODEL=gpt-5`
+   - `ANTHROPIC_API_KEY`
+   - `ANTHROPIC_MODEL=claude-sonnet-4-20250514`
 4. Deploy.
 
 ## Notes

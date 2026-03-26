@@ -19,7 +19,7 @@ app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 512 * 1024 * 1024
 app.config["UPLOAD_FOLDER"] = str(UPLOAD_DIR)
 
-analyzer = ContactAnalyzer(str(RUNS_DIR), model=os.getenv("OPENAI_MODEL", "gpt-5"))
+analyzer = ContactAnalyzer(str(RUNS_DIR), model=os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-20250514"))
 
 
 @app.route("/")

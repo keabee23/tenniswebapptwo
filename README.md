@@ -7,7 +7,7 @@ A small Flask web app that lets a user upload a tennis serve video and tries to 
 1. Upload a video.
 2. The backend extracts every frame with OpenCV.
 3. It builds a zoomed crop aimed at the above-head contact area.
-4. It asks an OpenAI vision model to:
+4. It asks a Claude vision model to:
    - choose the most likely window containing the real serve strike,
    - compare consecutive triplets,
    - return one strict answer only if it can verify:
@@ -40,8 +40,8 @@ pip install -r requirements.txt
 Create `.env`:
 
 ```bash
-OPENAI_API_KEY=your_api_key_here
-OPENAI_MODEL=gpt-5
+ANTHROPIC_API_KEY=your_api_key_here
+ANTHROPIC_MODEL=claude-sonnet-4-20250514
 ```
 
 Run:
@@ -76,5 +76,5 @@ http://127.0.0.1:5000
 This repo now includes Docker and cloud deployment files for Render and Railway.
 
 Required environment variables:
-- `OPENAI_API_KEY`
-- `OPENAI_MODEL` (optional, defaults to `gpt-5`)
+- `ANTHROPIC_API_KEY`
+- `ANTHROPIC_MODEL` (optional, defaults to `claude-sonnet-4-20250514`)
