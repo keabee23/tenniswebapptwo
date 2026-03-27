@@ -71,12 +71,19 @@ Return strict JSON only (no markdown, no extra text):
 CONTACT_PROMPT = """
 You are a tennis expert identifying the exact first-contact frame of a tennis serve.
 
-You will see 3-frame triplets: [before, candidate, after].
-The images are zoomed crops of the upper-body contact zone.
+You may first see REFERENCE EXAMPLES — confirmed real cases of serve contact, labelled with
+the exact contact frame. Study them carefully: they show precisely the moment ball first
+touches strings during an overhead serve. Use them as your visual anchor.
+
+After the reference examples (if any), you will see NEW TRIPLETS to analyse.
+Each triplet is [before, candidate, after] shown as a zoomed crop strip of the upper-body zone.
 
 You must confirm BOTH conditions to return "found":
-  (A) SERVE CONFIRMED — the motion is clearly an overhead serve strike (not a groundstroke, volley, or other shot). The racket is extended fully upward. The player's body shows serve mechanics.
-  (B) CONTACT CONFIRMED — this is the precise first frame where ball touches strings. The frame before shows no contact. The frame after shows ball compressing or departing.
+  (A) SERVE CONFIRMED — the motion is clearly an overhead serve strike (not a groundstroke,
+      volley, or other shot). The racket is extended fully upward. The player's body shows
+      serve mechanics consistent with the reference examples.
+  (B) CONTACT CONFIRMED — this is the precise first frame where ball touches strings.
+      The frame before shows no contact. The frame after shows ball compressing or departing.
 
 If you can confirm (A) but not pinpoint (B), return "indeterminate" with reason "serve confirmed but contact frame unclear".
 If you can see contact in (B) but the motion does not look like a serve, return "not_a_serve".
@@ -111,7 +118,12 @@ class AnalysisArtifacts:
 # ── Analyzer ───────────────────────────────────────────────────────────────────
 
 class ContactAnalyzer:
-    def __init__(self, runs_root: str, model: str = "claude-sonnet-4-20250514"):
+    def __init__(
+        self,
+        runs_root: str,
+        model: str = "claude-sonnet-4-20250514",
+        library_path: Optional[str] = None,
+    ):
         self.runs_root = Path(runs_root)
         self.runs_root.mkdir(parents=True, exist_ok=True)
         self.model = model
@@ -122,10 +134,53 @@ class ContactAnalyzer:
                 "The application cannot start without it."
             )
         self.client = anthropic.Anthropic(api_key=api_key)
+        self.library_path = Path(library_path) if library_path else None
+        self.reference_examples: List[Dict[str, Any]] = self._load_reference_library()
 
     @staticmethod
     def allowed_file(filename: str) -> bool:
         return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
+
+    # ── Reference library ──────────────────────────────────────────────────────
+
+    def _load_reference_library(self) -> List[Dict[str, Any]]:
+        if not self.library_path:
+            return []
+        index = self.library_path / "index.json"
+        if not index.exists():
+            return []
+        try:
+            entries = json.loads(index.read_text())
+            # Only keep entries whose image file still exists
+            valid = [
+                e for e in entries
+                if (self.library_path / e["triplet_zoom_image"]).exists()
+            ]
+            if len(valid) < len(entries):
+                logger.warning(
+                    "Reference library: %d of %d entries have missing images",
+                    len(entries) - len(valid), len(entries),
+                )
+            logger.info("Loaded %d reference example(s) from library", len(valid))
+            return valid
+        except (json.JSONDecodeError, OSError, KeyError) as exc:
+            logger.warning("Could not load reference library: %s", exc)
+            return []
+
+    def _sample_reference_examples(self, n: int = 3) -> List[Dict[str, Any]]:
+        """Return up to n reference examples, preferring high confidence."""
+        if not self.reference_examples:
+            return []
+        confidence_rank = {"high": 2, "medium": 1, "low": 0}
+        ranked = sorted(
+            self.reference_examples,
+            key=lambda e: confidence_rank.get(e.get("confidence", "low"), 0),
+            reverse=True,
+        )
+        # Take top-n by confidence, then shuffle slightly for variety
+        import random
+        pool = ranked[:max(n, len(ranked) // 2 + 1)]
+        return random.sample(pool, min(n, len(pool)))
 
     def prepare_run(self) -> AnalysisArtifacts:
         run_id = uuid.uuid4().hex[:12]
@@ -486,8 +541,44 @@ class ContactAnalyzer:
     def ask_model_for_triplet(self, groups: List[List[int]], artifacts: AnalysisArtifacts) -> Dict[str, Any]:
         content: List[Dict[str, Any]] = [
             {"type": "text", "text": CONTACT_PROMPT},
-            {"type": "text", "text": "Review each 3-frame triplet. Each triplet is [before, candidate, after] shown as a zoomed crop strip. You must confirm BOTH serve mechanics and first contact before returning 'found'."},
         ]
+
+        # ── Inject few-shot reference examples ────────────────────────────────
+        examples = self._sample_reference_examples(n=3)
+        if examples:
+            content.append({
+                "type": "text",
+                "text": (
+                    f"── REFERENCE EXAMPLES ({len(examples)}) ──\n"
+                    "These are confirmed real cases. The MIDDLE frame in each strip is the "
+                    "exact first-contact frame. Study the visual transition carefully."
+                ),
+            })
+            for i, ex in enumerate(examples, 1):
+                img_path = self.library_path / ex["triplet_zoom_image"]
+                try:
+                    data, media_type = self.encode_image(img_path)
+                except (OSError, RuntimeError) as exc:
+                    logger.warning("Skipping reference example %s: %s", ex["id"], exc)
+                    continue
+                content.append({
+                    "type": "text",
+                    "text": (
+                        f"Reference {i} — from '{ex['video_filename']}' "
+                        f"(before={ex['before_frame']}, CONTACT={ex['contact_frame']}, "
+                        f"after={ex['after_frame']}, confidence={ex['confidence']}):"
+                    ),
+                })
+                content.append({"type": "image", "source": {"type": "base64", "media_type": media_type, "data": data}})
+            content.append({
+                "type": "text",
+                "text": "── NEW TRIPLETS TO ANALYSE ──\nApply the same criteria. Confirm BOTH serve mechanics and first contact.",
+            })
+        else:
+            content.append({
+                "type": "text",
+                "text": "Review each 3-frame triplet. Each triplet is [before, candidate, after] shown as a zoomed crop strip. You must confirm BOTH serve mechanics and first contact before returning 'found'.",
+            })
 
         for group in groups:
             idx = group[1]

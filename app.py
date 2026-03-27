@@ -25,8 +25,10 @@ logger = logging.getLogger(__name__)
 BASE_DIR = Path(__file__).resolve().parent
 UPLOAD_DIR = BASE_DIR / "uploads"
 RUNS_DIR = BASE_DIR / "runs"
+LIBRARY_DIR = BASE_DIR / "reference_library"
 UPLOAD_DIR.mkdir(exist_ok=True)
 RUNS_DIR.mkdir(exist_ok=True)
+LIBRARY_DIR.mkdir(exist_ok=True)
 
 RUN_TTL_SECONDS = 24 * 60 * 60  # purge runs older than 24 hours
 HISTORY_LIMIT = 50               # max runs returned by /history
@@ -42,7 +44,11 @@ limiter = Limiter(
 )
 
 try:
-    analyzer = ContactAnalyzer(str(RUNS_DIR), model=os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-20250514"))
+    analyzer = ContactAnalyzer(
+        str(RUNS_DIR),
+        model=os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-20250514"),
+        library_path=str(LIBRARY_DIR),
+    )
 except RuntimeError as exc:
     logger.critical("Failed to initialize ContactAnalyzer: %s", exc)
     raise
@@ -220,6 +226,25 @@ def run_result(run_id: str):
         logger.error("Could not read result.json for run %s: %s", run_id, exc)
         return jsonify({"error": "Could not read run result."}), 500
     return jsonify(data)
+
+
+@app.route("/library")
+def library_status():
+    """Return summary of the reference library currently loaded."""
+    entries = analyzer.reference_examples
+    return jsonify({
+        "count": len(entries),
+        "examples": [
+            {
+                "id": e["id"],
+                "video_filename": e["video_filename"],
+                "contact_frame": e["contact_frame"],
+                "confidence": e["confidence"],
+                "added_at": e["added_at"],
+            }
+            for e in entries
+        ],
+    })
 
 
 @app.route("/history")

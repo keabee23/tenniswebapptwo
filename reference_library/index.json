@@ -1,0 +1,38 @@
+[
+  {
+    "id": "8eaa955893",
+    "added_at": "2026-03-27T10:38:51.446427+00:00",
+    "video_filename": "003_3nKQtDzcRMc.mp4",
+    "run_id": "e43026615c18",
+    "before_frame": 301,
+    "contact_frame": 302,
+    "after_frame": 303,
+    "confidence": "high",
+    "reason": "Clear overhead serve motion with racket extended upward. Frame 301 shows ball approaching racket, frame 302 shows ball-string contact, frame 303 shows ball compressed against strings",
+    "triplet_zoom_image": "examples/8eaa955893_triplet_zoom.png"
+  },
+  {
+    "id": "af5fdb7439",
+    "added_at": "2026-03-27T17:01:54.537572+00:00",
+    "video_filename": "002_E9-AKhBPnJ0.mp4",
+    "run_id": "c0b98d599999",
+    "before_frame": 392,
+    "contact_frame": 393,
+    "after_frame": 394,
+    "confidence": "high",
+    "reason": "Clear overhead serve motion with racket fully extended upward. Frame 392 shows ball approaching racket, frame 393 shows first contact with ball touching strings, frame 394 shows ball compressing against racket face.",
+    "triplet_zoom_image": "examples/af5fdb7439_triplet_zoom.png"
+  },
+  {
+    "id": "ebbcefce71",
+    "added_at": "2026-03-27T17:18:16.333429+00:00",
+    "video_filename": "020_kqoCgC_wfK8.mp4",
+    "run_id": "0fece25c8b8e",
+    "before_frame": 215,
+    "contact_frame": 216,
+    "after_frame": 217,
+    "confidence": "high",
+    "reason": "Clear serve motion with racket fully extended overhead. Ball visible and distinct at contact in frame 216, with ball position changing between frames indicating first contact moment.",
+    "triplet_zoom_image": "examples/ebbcefce71_triplet_zoom.png"
+  }
+]
